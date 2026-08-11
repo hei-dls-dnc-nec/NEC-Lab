@@ -1,0 +1,11 @@
+[project]
+name = "nec-lab"
+version = "0.1.0"
+description = "NEC lab base repository"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "paho-mqtt>=2.1.0",
+    "pymodbus>=3.14.0",
+    "requests>=2.34.2",
+]
