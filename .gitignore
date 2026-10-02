@@ -1,3 +1,11 @@
+# IDE
+.idea/
+.vscode/
+
+# Python
 .venv
 __pycache__
+
+# General
 .env
+.DS_Store
