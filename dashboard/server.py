@@ -5,11 +5,12 @@ import os
 import sys
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 from dashboard.config import (
     DEFAULT_HTTP_PORT,
     DEFAULT_MODBUS_PORT,
+    COIL_DEFINITIONS,
+    REGISTER_DEFINITIONS,
 )
 from dashboard.state import state, PRIMARY_LAN_IP, ALL_LAN_IPS
 from dashboard.modbus_engine import (
@@ -144,15 +147,65 @@ class WriteCoilRequest(BaseModel):
     value: Optional[bool] = None  # None = toggle current
 
 
+@app.get("/api/modbus/poll")
+async def poll_modbus(request: Request, fc: int = 3, addr: int = 0, qty: int = 10):
+    """
+    SCADA Telemetry Poll endpoint executed by client browser to query Modbus data over HTTP.
+    Generates real network traffic between client browser and server daemon.
+    """
+    client_host = request.client.host if request.client else "web-client"
+    qty = max(1, min(10, qty))
+    addr = max(0, min(9, addr))
+
+    with state._lock:
+        if fc == 1:
+            data = state.coils[addr : addr + qty]
+            desc = f"SCADA Poll: Read Coils 0000{addr+1}..0000{addr+len(data)} (Qty: {len(data)})"
+            hex_data = " ".join(f"{1 if v else 0:02X}" for v in data)
+        else:
+            data = state.holding_registers[addr : addr + qty]
+            desc = f"SCADA Poll: Read Holding Regs 40001+{addr}..40001+{addr+len(data)-1} (Qty: {len(data)})"
+            hex_data = " ".join(f"{v:04X}" for v in data)
+
+        state.stats["modbus_transactions"] += 1
+
+    state.add_log_entry(
+        proto="MODBUS",
+        direction="RX",
+        summary=desc,
+        peer=client_host,
+        details={
+            "action": "scada_poll",
+            "fc": fc,
+            "start_addr": addr,
+            "quantity": qty,
+            "values": data,
+        },
+        raw_hex=f"00 00 00 00 00 06 01 {fc:02X} {addr:04X} {qty:04X} -> {hex_data}",
+    )
+
+    return {
+        "status": "ok",
+        "fc": fc,
+        "start_addr": addr,
+        "quantity": qty,
+        "data": data,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @app.post("/api/modbus/write_coil")
-async def write_coil(req: WriteCoilRequest):
-    """Writes a single coil value (FC05) locally or to target slave."""
+async def write_coil(req: WriteCoilRequest, request: Request):
+    """Writes a single coil value (FC05) in the PLC datastore and dispatches wire frame to target."""
     if not (0 <= req.index < len(state.coils)):
         raise HTTPException(status_code=400, detail="Invalid coil index")
 
     target_val = not state.coils[req.index] if req.value is None else bool(req.value)
 
-    # Trigger wire write via thread
+    with state._lock:
+        state.coils[req.index] = target_val
+
+    # Dispatch binary Modbus TCP FC05 frame over port 1502
     target_host = state.master_config.get("target_host", "127.0.0.1")
     target_port = state.master_config.get("target_port", DEFAULT_MODBUS_PORT)
     val_int = 0xFF00 if target_val else 0x0000
@@ -163,7 +216,8 @@ async def write_coil(req: WriteCoilRequest):
         daemon=True,
     ).start()
 
-    return {"status": "dispatched", "index": req.index, "value": target_val}
+    state.broadcast_state_update()
+    return {"status": "success", "index": req.index, "value": target_val}
 
 
 class WriteRegisterRequest(BaseModel):
@@ -172,13 +226,17 @@ class WriteRegisterRequest(BaseModel):
 
 
 @app.post("/api/modbus/write_register")
-async def write_register(req: WriteRegisterRequest):
-    """Writes a single 16-bit register value (FC06)."""
+async def write_register(req: WriteRegisterRequest, request: Request):
+    """Writes a single 16-bit register value (FC06) in the PLC datastore and dispatches wire frame to target."""
     if not (0 <= req.index < len(state.holding_registers)):
         raise HTTPException(status_code=400, detail="Invalid register index")
     if not (0 <= req.value <= 65535):
         raise HTTPException(status_code=400, detail="Value must be 16-bit unsigned (0..65535)")
 
+    with state._lock:
+        state.holding_registers[req.index] = req.value
+
+    # Dispatch binary Modbus TCP FC06 frame over port 1502
     target_host = state.master_config.get("target_host", "127.0.0.1")
     target_port = state.master_config.get("target_port", DEFAULT_MODBUS_PORT)
 
@@ -188,7 +246,8 @@ async def write_register(req: WriteRegisterRequest):
         daemon=True,
     ).start()
 
-    return {"status": "dispatched", "index": req.index, "value": req.value}
+    state.broadcast_state_update()
+    return {"status": "success", "index": req.index, "value": req.value}
 
 
 class ManualQueryRequest(BaseModel):

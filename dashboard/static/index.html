@@ -203,42 +203,110 @@
                 </div>
             </div>
 
+            <!-- Modbus Master & Target Service Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Modbus Master Poller & Target Service (Port 1502 Wire Traffic)</h2>
+                    <span id="mb-badge-poller" class="badge badge-active">Poller Active</span>
+                </div>
+                <div class="panel-body modbus-config-grid">
+                    <!-- Line 1: Target Destination & TCP Socket Mode -->
+                    <div class="config-row-2">
+                        <!-- Target Host & Port -->
+                        <div class="control-group">
+                            <label for="mb-txt-target">Target Modbus Slave Host & Port:</label>
+                            <div class="input-inline-group">
+                                <input type="text" id="mb-txt-target" class="input-field" value="127.0.0.1" placeholder="127.0.0.1 or Remote Device IP">
+                                <input type="number" id="mb-num-port" class="input-field" value="1502" style="max-width: 90px;">
+                                <button id="mb-btn-apply-target" class="btn btn-secondary">Apply Target</button>
+                            </div>
+                        </div>
+
+                        <!-- Connection Mode -->
+                        <div class="control-group">
+                            <label for="mb-sel-conn-mode">TCP Connection Lifecycle:</label>
+                            <select id="mb-sel-conn-mode" class="select-field">
+                                <option value="keep-alive">Persistent TCP Socket (Keep-Alive)</option>
+                                <option value="transient">Transient Socket (Reconnect per query)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Line 2: Polling Execution & Actions -->
+                    <div class="config-row-3">
+                        <!-- Polling Rate -->
+                        <div class="control-group">
+                            <div class="control-label-row">
+                                <label for="mb-rng-interval">Polling Rate (Interval):</label>
+                                <span class="val-mono" id="mb-lbl-interval">1.0 s</span>
+                            </div>
+                            <input type="range" id="mb-rng-interval" min="0.1" max="5.0" step="0.1" value="1.0">
+                        </div>
+
+                        <!-- Query Function -->
+                        <div class="control-group">
+                            <label for="mb-sel-fc">Query Target:</label>
+                            <select id="mb-sel-fc" class="select-field">
+                                <option value="3">FC 03 — Read Holding Registers (40001..40010)</option>
+                                <option value="1">FC 01 — Read Coils (00001..00010)</option>
+                            </select>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="control-group">
+                            <label>Execution Controls:</label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button id="mb-btn-toggle-poller" class="btn btn-primary" style="flex: 1;">Pause Poller</button>
+                                <button id="mb-btn-manual-query" class="btn btn-secondary">Send Query</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modbus Work Area Grid -->
             <div class="two-col-grid">
-                <!-- Left Column: Slave PLC Datastore -->
+                <!-- Left Column: Coils Datastore -->
                 <div class="panel">
                     <div class="panel-header">
-                        <h2>Modbus Slave Datastore (PLC Device)</h2>
-                        <span class="badge badge-active">Port 1502 Active</span>
+                        <h2>Coils Datastore (0x — Discrete Signals)</h2>
+                        <span class="badge badge-active">FC01 / FC05</span>
                     </div>
                     <div class="panel-body">
-                        <!-- Coils Table -->
                         <div class="table-section">
                             <div class="section-title">
-                                <h3>Coils (0x — 1-bit Discrete Inputs/Outputs)</h3>
-                                <span class="sub-text">Click state to toggle (FC05 Write Single Coil)</span>
+                                <h3>Discrete Coil Outputs (1-bit States)</h3>
+                                <span class="sub-text">Click state button to toggle</span>
                             </div>
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead>
                                         <tr>
                                             <th style="width: 70px;">Addr</th>
-                                            <th>Signal / Name</th>
+                                            <th>Signal / Description</th>
                                             <th style="width: 90px; text-align: center;">State</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tbl-coils">
-                                        <!-- Dynamically generated -->
+                                        <!-- Dynamically populated -->
                                     </tbody>
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- Holding Registers Table -->
-                        <div class="table-section" style="margin-top: 1.25rem;">
+                <!-- Right Column: Holding Registers Datastore -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Holding Registers (4x — Process Telemetry)</h2>
+                        <span class="badge badge-active">FC03 / FC06</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="table-section">
                             <div class="section-title">
-                                <h3>Holding Registers (4x — 16-bit Unsigned Telemetry)</h3>
-                                <span class="sub-text">Process drift active on 40001–40003</span>
+                                <h3>Analog Process Telemetry</h3>
+                                <span class="sub-text">Live sensor drift on 40001–40003</span>
                             </div>
                             <div class="table-container">
                                 <table class="data-table">
@@ -251,79 +319,17 @@
                                         </tr>
                                     </thead>
                                     <tbody id="tbl-registers">
-                                        <!-- Dynamically generated -->
+                                        <!-- Dynamically populated -->
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <!-- Right Column: Master Poller & LAN Configuration -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <h2>SCADA Master (Client Poller)</h2>
-                        <span id="mb-badge-poller" class="badge badge-active">Poller Active</span>
-                    </div>
-                    <div class="panel-body">
-                        <div class="control-group">
-                            <button id="mb-btn-toggle-poller" class="btn btn-primary btn-block">Pause Master Poller</button>
-                        </div>
-
-                        <!-- Target Selection -->
-                        <div class="control-group">
-                            <label for="mb-txt-target">Target Slave Host & Port:</label>
-                            <div class="input-inline-group">
-                                <input type="text" id="mb-txt-target" class="input-field" value="127.0.0.1" placeholder="127.0.0.1 or Classmate LAN IP">
-                                <input type="number" id="mb-num-port" class="input-field" value="1502" style="max-width: 90px;">
-                                <button id="mb-btn-apply-target" class="btn btn-secondary">Apply</button>
-                            </div>
-                            <span class="field-hint">Change target to a classmate's IP to query their machine across the lab network!</span>
-                        </div>
-
-                        <div class="control-group">
-                            <div class="control-label-row">
-                                <label for="mb-rng-interval">Polling Rate:</label>
-                                <span class="val-mono" id="mb-lbl-interval">1.0 s</span>
-                            </div>
-                            <input type="range" id="mb-rng-interval" min="0.1" max="5.0" step="0.1" value="1.0">
-                        </div>
-
-                        <div class="control-group">
-                            <label for="mb-sel-fc">Query Function Code:</label>
-                            <select id="mb-sel-fc" class="select-field">
-                                <option value="3">FC 03 — Read Holding Registers (40001..40010)</option>
-                                <option value="1">FC 01 — Read Coils (00001..00010)</option>
-                            </select>
-                        </div>
-
-                        <div class="control-group">
-                            <label for="mb-sel-conn-mode">TCP Connection Management:</label>
-                            <select id="mb-sel-conn-mode" class="select-field">
-                                <option value="keep-alive">Persistent TCP Socket (Industrial Standard)</option>
-                                <option value="transient">Transient Socket (Reconnect per Query — High SYN rate)</option>
-                            </select>
-                        </div>
-
-                        <!-- Manual One-Off Query Box -->
-                        <div class="info-card" style="margin-top: 1rem;">
-                            <h3>One-Off Manual Modbus Query</h3>
-                            <div class="input-inline-group" style="margin-top: 0.5rem;">
-                                <select id="mb-sel-manual-fc" class="select-field" style="max-width: 140px;">
-                                    <option value="3">FC03 Regs</option>
-                                    <option value="1">FC01 Coils</option>
-                                </select>
-                                <input type="number" id="mb-num-manual-addr" class="input-field" value="0" min="0" max="9" placeholder="Addr">
-                                <input type="number" id="mb-num-manual-qty" class="input-field" value="5" min="1" max="10" placeholder="Qty">
-                                <button id="mb-btn-send-manual" class="btn btn-secondary">Query</button>
-                            </div>
-                        </div>
-
-                        <!-- Connected Clients Info -->
-                        <div class="info-card" style="margin-top: 1rem;">
-                            <h3>Connected LAN Clients (Slave Connections)</h3>
+                        <!-- Connected Modbus TCP Clients -->
+                        <div class="info-card" style="margin-top: 0.5rem;">
+                            <h3>Connected Modbus TCP Clients (Port 1502)</h3>
                             <div id="mb-connected-clients-list" class="client-tags-box">
-                                <span class="tag-empty">No external LAN clients currently connected</span>
+                                <span class="tag-empty">No external Modbus clients currently connected</span>
                             </div>
                         </div>
                     </div>

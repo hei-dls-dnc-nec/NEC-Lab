@@ -1,3 +1,7 @@
+/* ==========================================================================
+   NEC Protocol Workbench — Professional Technical UI (Zinc / Slate)
+   ========================================================================== */
+
 :root {
     --bg-base: #090a0f;
     --bg-surface: #11141d;
@@ -47,6 +51,10 @@ body {
     display: flex;
     flex-direction: column;
 }
+
+/* ==========================================================================
+   Header & Navigation
+   ========================================================================== */
 
 .app-header {
     background-color: var(--bg-surface);
@@ -177,6 +185,10 @@ body {
     background-color: var(--status-red);
 }
 
+/* ==========================================================================
+   Tab Navigation
+   ========================================================================== */
+
 .tab-nav {
     display: flex;
     gap: 0.25rem;
@@ -209,6 +221,10 @@ body {
     border-bottom-color: var(--accent-blue);
 }
 
+/* ==========================================================================
+   Main Content Layout
+   ========================================================================== */
+
 .main-content {
     flex: 1;
     padding: 1.5rem;
@@ -229,6 +245,10 @@ body {
 .tab-pane.active {
     display: flex;
 }
+
+/* ==========================================================================
+   KPI Metrics Grid
+   ========================================================================== */
 
 .kpi-grid {
     display: grid;
@@ -267,6 +287,7 @@ body {
     color: var(--text-secondary);
 }
 
+/* Two Column Grid */
 .two-col-grid {
     display: grid;
     grid-template-columns: 1.15fr 1fr;
@@ -278,6 +299,37 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* Modbus 2-Line Configuration Layout */
+.modbus-config-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.config-row-2 {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1.25rem;
+    align-items: flex-end;
+}
+
+.config-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.1fr;
+    gap: 1.25rem;
+    align-items: flex-end;
+}
+
+@media (max-width: 900px) {
+    .config-row-2, .config-row-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==========================================================================
+   Panels & Cards
+   ========================================================================== */
 
 .panel {
     background-color: var(--bg-surface);
@@ -315,6 +367,7 @@ body {
     line-height: 1.4;
 }
 
+/* Badges */
 .badge {
     display: inline-flex;
     align-items: center;
@@ -338,6 +391,7 @@ body {
     border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
+/* Controls & Forms */
 .control-group {
     display: flex;
     flex-direction: column;
@@ -400,6 +454,7 @@ label {
     flex: 1;
 }
 
+/* Range Slider */
 input[type="range"] {
     -webkit-appearance: none;
     width: 100%;
@@ -424,6 +479,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     transform: scale(1.2);
 }
 
+/* Buttons */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -478,6 +534,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     font-size: 0.75rem;
 }
 
+/* Burst Grid */
 .burst-btn-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -497,6 +554,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--text-muted);
 }
 
+/* Info Cards & Checklists */
 .info-card {
     background-color: var(--bg-elevated);
     border: 1px solid var(--border-subtle);
@@ -528,6 +586,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--text-primary);
 }
 
+/* Client Tags Box */
 .client-tags-box {
     display: flex;
     flex-wrap: wrap;
@@ -548,6 +607,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--text-muted);
     font-style: italic;
 }
+
+/* ==========================================================================
+   Tables & Data Grid
+   ========================================================================== */
 
 .table-section {
     display: flex;
@@ -611,6 +674,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background-color: rgba(255, 255, 255, 0.02);
 }
 
+/* Coil Toggle Button */
 .coil-switch {
     display: inline-flex;
     align-items: center;
@@ -638,6 +702,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     border-color: var(--border);
 }
 
+/* Register Inline Write */
 .reg-write-group {
     display: flex;
     gap: 0.3rem;
@@ -670,6 +735,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
     border-color: var(--accent-blue);
     color: var(--accent-blue);
 }
+
+/* ==========================================================================
+   Live Protocol & Frame Analyzer
+   ========================================================================== */
 
 .panel-analyzer {
     display: flex;
@@ -784,6 +853,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background-color: var(--bg-hover);
 }
 
+/* Protocol Badges in Logs */
 .proto-badge {
     display: inline-block;
     padding: 0.1rem 0.35rem;
@@ -821,6 +891,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ==========================================================================
+   Modal Dialog
+   ========================================================================== */
 
 .modal-overlay {
     position: fixed;
@@ -902,6 +976,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
     letter-spacing: 0.05em;
     line-height: 1.6;
 }
+
+/* ==========================================================================
+   Toast Notification
+   ========================================================================== */
 
 .toast {
     position: fixed;

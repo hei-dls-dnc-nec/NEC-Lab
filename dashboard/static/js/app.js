@@ -2,6 +2,7 @@
  * NEC Protocol Workbench — Unified HTTP & Modbus TCP SCADA Dashboard
  */
 
+// Application State
 const App = {
     ws: null,
     wsConnected: false,
@@ -22,6 +23,7 @@ const App = {
     searchQuery: '',
     autoScroll: true,
 
+    // HTTP Poller client-side state
     http: {
         active: false,
         timer: null,
@@ -37,8 +39,20 @@ const App = {
         lastRtt: 0
     },
 
+    // SCADA Client Poller client-side state
+    scada: {
+        active: false,
+        timer: null,
+        interval: 1.0,
+        fc: 3
+    },
+
     focusedInputId: null
 };
+
+// ==========================================================================
+// Utility Functions
+// ==========================================================================
 
 function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -69,6 +83,10 @@ function copyToClipboard(text, label) {
 function generatePadding(bytes) {
     return 'Z'.repeat(Math.max(0, bytes));
 }
+
+// ==========================================================================
+// WebSocket Real-time Feed
+// ==========================================================================
 
 function initWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -119,15 +137,25 @@ function initWebSocket() {
     };
 }
 
+// ==========================================================================
+// Rendering: Full State & UI
+// ==========================================================================
+
 function renderFullState() {
     const s = App.state;
 
+    // Header Info
     if (s.server_info) {
-        document.getElementById('hdr-http-port').textContent = s.server_info.http_port || 8050;
-        document.getElementById('hdr-modbus-port').textContent = s.server_info.modbus_port || 1502;
-        document.getElementById('hdr-lan-ip').textContent = s.server_info.primary_ip || '127.0.0.1';
+        const httpPortEl = document.getElementById('hdr-http-port');
+        const modbusPortEl = document.getElementById('hdr-modbus-port');
+        const lanIpEl = document.getElementById('hdr-lan-ip');
+
+        if (httpPortEl) httpPortEl.textContent = s.server_info.http_port || 8050;
+        if (modbusPortEl) modbusPortEl.textContent = s.server_info.modbus_port || 1502;
+        if (lanIpEl) lanIpEl.textContent = s.server_info.primary_ip || '127.0.0.1';
     }
 
+    // Modbus KPIs
     if (s.stats) {
         document.getElementById('mb-stat-transactions').textContent = s.stats.modbus_transactions || 0;
         document.getElementById('mb-stat-active-conn').textContent = s.stats.modbus_active_connections || 0;
@@ -138,45 +166,72 @@ function renderFullState() {
         const clientList = s.stats.modbus_connected_clients || [];
         document.getElementById('mb-stat-connected-clients').textContent = `${clientList.length} connected client(s)`;
 
+        // Connected clients list box (only update DOM if changed)
         const clientsBox = document.getElementById('mb-connected-clients-list');
-        if (clientList.length === 0) {
-            clientsBox.innerHTML = '<span class="tag-empty">No external LAN clients currently connected</span>';
-        } else {
-            clientsBox.innerHTML = clientList.map(c => `<span class="client-tag">${c}</span>`).join('');
+        if (clientsBox) {
+            const newHtml = clientList.length === 0
+                ? '<span class="tag-empty">No external LAN clients currently connected</span>'
+                : clientList.map(c => `<span class="client-tag">${c}</span>`).join('');
+            if (clientsBox.innerHTML !== newHtml) {
+                clientsBox.innerHTML = newHtml;
+            }
         }
     }
 
+    // Coils Table (in-place update)
     renderCoilsTable(s.coils || []);
+
+    // Registers Table (in-place update)
     renderRegistersTable(s.registers || []);
 
+    // Modbus Poller Controls
     if (s.master_config) {
         const cfg = s.master_config;
         const pollerActive = !!cfg.polling_active;
         const btnToggle = document.getElementById('mb-btn-toggle-poller');
         const badgePoller = document.getElementById('mb-badge-poller');
 
-        if (pollerActive) {
-            btnToggle.textContent = 'Pause Master Poller';
-            btnToggle.className = 'btn btn-secondary btn-block';
-            badgePoller.textContent = 'Poller Active';
-            badgePoller.className = 'badge badge-active';
-        } else {
-            btnToggle.textContent = 'Resume Master Poller';
-            btnToggle.className = 'btn btn-primary btn-block';
-            badgePoller.textContent = 'Poller Paused';
-            badgePoller.className = 'badge badge-inactive';
+        if (btnToggle && badgePoller) {
+            if (pollerActive) {
+                btnToggle.textContent = 'Pause Master Poller';
+                btnToggle.className = 'btn btn-secondary btn-block';
+                badgePoller.textContent = 'Poller Active';
+                badgePoller.className = 'badge badge-active';
+            } else {
+                btnToggle.textContent = 'Resume Master Poller';
+                btnToggle.className = 'btn btn-primary btn-block';
+                badgePoller.textContent = 'Poller Paused';
+                badgePoller.className = 'badge badge-inactive';
+            }
         }
 
-        if (App.focusedInputId !== 'mb-txt-target') {
-            document.getElementById('mb-txt-target').value = cfg.target_host || '127.0.0.1';
+        // Never overwrite inputs if the user is currently focused on them or editing them
+        const txtTarget = document.getElementById('mb-txt-target');
+        if (txtTarget && document.activeElement !== txtTarget && !txtTarget.dataset.userEdited) {
+            txtTarget.value = cfg.target_host || '127.0.0.1';
         }
-        if (App.focusedInputId !== 'mb-num-port') {
-            document.getElementById('mb-num-port').value = cfg.target_port || 1502;
+
+        const numPort = document.getElementById('mb-num-port');
+        if (numPort && document.activeElement !== numPort && !numPort.dataset.userEdited) {
+            numPort.value = cfg.target_port || 1502;
         }
-        document.getElementById('mb-rng-interval').value = cfg.interval || 1.0;
-        document.getElementById('mb-lbl-interval').textContent = `${(cfg.interval || 1.0).toFixed(1)} s`;
-        document.getElementById('mb-sel-fc').value = cfg.function_code || 3;
-        document.getElementById('mb-sel-conn-mode').value = cfg.connection_mode || 'keep-alive';
+
+        const rngInterval = document.getElementById('mb-rng-interval');
+        const lblInterval = document.getElementById('mb-lbl-interval');
+        if (rngInterval && document.activeElement !== rngInterval) {
+            rngInterval.value = cfg.interval || 1.0;
+            if (lblInterval) lblInterval.textContent = `${(cfg.interval || 1.0).toFixed(1)} s`;
+        }
+
+        const selFc = document.getElementById('mb-sel-fc');
+        if (selFc && document.activeElement !== selFc) {
+            selFc.value = cfg.function_code || 3;
+        }
+
+        const selConnMode = document.getElementById('mb-sel-conn-mode');
+        if (selConnMode && document.activeElement !== selConnMode) {
+            selConnMode.value = cfg.connection_mode || 'keep-alive';
+        }
     }
 }
 
@@ -184,63 +239,101 @@ function renderCoilsTable(coils) {
     const tbody = document.getElementById('tbl-coils');
     if (!tbody) return;
 
-    tbody.innerHTML = coils.map((coil, idx) => {
-        const addrDisplay = `0000${idx + 1}`.slice(-5);
-        const isOn = coil.value;
-        return `
-            <tr>
-                <td style="font-family: var(--font-mono); color: var(--text-muted);">${addrDisplay}</td>
-                <td>
-                    <div style="font-weight: 500;">${coil.name}</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted);">${coil.desc}</div>
-                </td>
-                <td style="text-align: center;">
-                    <button class="coil-switch ${isOn ? 'on' : 'off'}" onclick="toggleCoil(${idx}, ${isOn})">
-                        ${isOn ? '1 / ON' : '0 / OFF'}
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    // 1. Initial build: only if table is empty
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = coils.map((coil, idx) => {
+            const addrDisplay = `0000${idx + 1}`.slice(-5);
+            const isOn = coil.value;
+            const btnId = `coil-btn-${idx}`;
+            return `
+                <tr>
+                    <td style="font-family: var(--font-mono); color: var(--text-muted);">${addrDisplay}</td>
+                    <td>
+                        <div style="font-weight: 500;">${coil.name}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${coil.desc}</div>
+                    </td>
+                    <td style="text-align: center;">
+                        <button id="${btnId}" class="coil-switch ${isOn ? 'on' : 'off'}" onclick="toggleCoil(${idx})">
+                            ${isOn ? '1 / ON' : '0 / OFF'}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        return;
+    }
+
+    // 2. Incremental in-place update (never recreate the DOM)
+    coils.forEach((coil, idx) => {
+        const btn = document.getElementById(`coil-btn-${idx}`);
+        if (btn) {
+            const isOn = coil.value;
+            const targetClass = `coil-switch ${isOn ? 'on' : 'off'}`;
+            const targetText = isOn ? '1 / ON' : '0 / OFF';
+            if (btn.className !== targetClass) btn.className = targetClass;
+            if (btn.textContent.trim() !== targetText) btn.textContent = targetText;
+        }
+    });
 }
 
 function renderRegistersTable(registers) {
     const tbody = document.getElementById('tbl-registers');
     if (!tbody) return;
 
-    tbody.innerHTML = registers.map((reg, idx) => {
-        const inputId = `reg-input-${idx}`;
-        const isFocused = (App.focusedInputId === inputId);
-        const currentValue = reg.value;
+    // 1. Initial build: only if table is empty
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = registers.map((reg, idx) => {
+            const inputId = `reg-input-${idx}`;
+            const valId = `reg-val-${idx}`;
+            const currentValue = reg.value;
 
-        return `
-            <tr>
-                <td style="font-family: var(--font-mono); color: var(--text-muted);">
-                    <div>${reg.display_addr}</div>
-                    <div style="font-size: 0.68rem; color: var(--text-muted);">${reg.hex_addr}</div>
-                </td>
-                <td>
-                    <div style="font-weight: 500;">${reg.name}</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted);">${reg.desc}</div>
-                </td>
-                <td style="text-align: right; font-family: var(--font-mono); font-weight: 600; color: var(--status-green);">
-                    ${currentValue} <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal;">${reg.unit}</span>
-                </td>
-                <td>
-                    <div class="reg-write-group">
-                        <input type="number" id="${inputId}" class="reg-input" 
-                               value="${isFocused ? document.getElementById(inputId)?.value || currentValue : currentValue}"
-                               min="0" max="65535"
-                               onfocus="App.focusedInputId='${inputId}'"
-                               onblur="setTimeout(() => { if (App.focusedInputId==='${inputId}') App.focusedInputId=null; }, 200)"
-                               onkeydown="if(event.key==='Enter') writeRegister(${idx}, document.getElementById('${inputId}').value)">
-                        <button class="reg-btn-set" onclick="writeRegister(${idx}, document.getElementById('${inputId}').value)">Set</button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
+            return `
+                <tr>
+                    <td style="font-family: var(--font-mono); color: var(--text-muted);">
+                        <div>${reg.display_addr}</div>
+                        <div style="font-size: 0.68rem; color: var(--text-muted);">${reg.hex_addr}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">${reg.name}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${reg.desc}</div>
+                    </td>
+                    <td id="${valId}" style="text-align: right; font-family: var(--font-mono); font-weight: 600; color: var(--status-green);">
+                        ${currentValue} <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal;">${reg.unit}</span>
+                    </td>
+                    <td>
+                        <div class="reg-write-group">
+                            <input type="number" id="${inputId}" class="reg-input" 
+                                   value="${currentValue}"
+                                   min="0" max="65535"
+                                   oninput="this.dataset.userEdited='true'"
+                                   onkeydown="if(event.key==='Enter') writeRegister(${idx}, this.value)">
+                            <button class="reg-btn-set" onclick="writeRegister(${idx}, document.getElementById('${inputId}').value)">Set</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        return;
+    }
+
+    // 2. Incremental in-place update (never recreate the DOM rows or inputs!)
+    registers.forEach((reg, idx) => {
+        const valElem = document.getElementById(`reg-val-${idx}`);
+        if (valElem) {
+            valElem.innerHTML = `${reg.value} <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal;">${reg.unit}</span>`;
+        }
+
+        const inputElem = document.getElementById(`reg-input-${idx}`);
+        // ONLY update input.value if the user is NOT actively typing or focused on it
+        if (inputElem && document.activeElement !== inputElem && !inputElem.dataset.userEdited) {
+            inputElem.value = reg.value;
+        }
+    });
 }
+
+// ==========================================================================
+// Log & Packet Stream Analyzer
+// ==========================================================================
 
 function handleNewLogEntry(entry) {
     App.logs.push(entry);
@@ -299,6 +392,7 @@ function appendLogRow(entry) {
     const tr = createLogRowElement(entry);
     tbody.appendChild(tr);
 
+    // Keep DOM limited to last 200 rows
     while (tbody.children.length > 200) {
         tbody.removeChild(tbody.firstChild);
     }
@@ -342,6 +436,10 @@ function openPacketModal(entry) {
 
     document.getElementById('packet-modal').classList.remove('hidden');
 }
+
+// ==========================================================================
+// HTTP Traffic Generator Logic
+// ==========================================================================
 
 function toggleHttpPolling() {
     App.http.active = !App.http.active;
@@ -404,7 +502,7 @@ async function executeHttpPoll() {
             App.http.txBytes += new Blob([bodyStr]).size;
         } else {
             App.http.txCount++;
-            App.http.txBytes += 120;
+            App.http.txBytes += 120; // Estimated HTTP GET header length
         }
 
         const res = await fetch(url, options);
@@ -490,12 +588,17 @@ async function sendParallelBurst() {
     }
 }
 
-async function toggleCoil(index, currentValue) {
+// ==========================================================================
+// Modbus API Actions
+// ==========================================================================
+
+async function toggleCoil(index) {
+    const currentVal = App.state.coils && App.state.coils[index] ? App.state.coils[index].value : false;
     try {
         await fetch('/api/modbus/write_coil', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ index: index, value: !currentValue })
+            body: JSON.stringify({ index: index, value: !currentVal })
         });
     } catch (err) {
         showToast(`Failed to toggle coil ${index}`);
@@ -507,6 +610,11 @@ async function writeRegister(index, valueStr) {
     if (isNaN(val) || val < 0 || val > 65535) {
         showToast('Value must be an integer between 0 and 65535');
         return;
+    }
+
+    const inputElem = document.getElementById(`reg-input-${index}`);
+    if (inputElem) {
+        delete inputElem.dataset.userEdited;
     }
 
     try {
@@ -535,11 +643,16 @@ async function toggleMasterPoller() {
 }
 
 async function applyMasterConfig() {
-    const targetHost = document.getElementById('mb-txt-target').value.trim();
-    const targetPort = parseInt(document.getElementById('mb-num-port').value, 10);
+    const txtTarget = document.getElementById('mb-txt-target');
+    const numPort = document.getElementById('mb-num-port');
+    const targetHost = txtTarget ? txtTarget.value.trim() : '127.0.0.1';
+    const targetPort = numPort ? parseInt(numPort.value, 10) : 1502;
     const interval = parseFloat(document.getElementById('mb-rng-interval').value);
     const fc = parseInt(document.getElementById('mb-sel-fc').value, 10);
     const connMode = document.getElementById('mb-sel-conn-mode').value;
+
+    if (txtTarget) delete txtTarget.dataset.userEdited;
+    if (numPort) delete numPort.dataset.userEdited;
 
     try {
         await fetch('/api/modbus/config', {
@@ -560,25 +673,32 @@ async function applyMasterConfig() {
 }
 
 async function sendManualModbusQuery() {
-    const fc = parseInt(document.getElementById('mb-sel-manual-fc').value, 10);
-    const addr = parseInt(document.getElementById('mb-num-manual-addr').value, 10);
-    const qty = parseInt(document.getElementById('mb-num-manual-qty').value, 10);
-
+    const selFc = document.getElementById('mb-sel-fc');
+    const fc = selFc ? parseInt(selFc.value, 10) : 3;
     try {
-        await fetch('/api/modbus/manual_query', {
+        showToast(`Sending single FC0${fc} wire query...`);
+        const res = await fetch('/api/modbus/manual_query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fc: fc, start_addr: addr, quantity: qty })
+            body: JSON.stringify({ fc: fc, start_addr: 0, quantity: 10 })
         });
-        showToast(`Dispatched manual FC0${fc} query`);
+        if (res.ok) {
+            showToast(`FC0${fc} wire query dispatched!`);
+        }
     } catch (err) {
-        showToast('Manual query failed');
+        showToast('Query failed');
     }
 }
 
+// ==========================================================================
+// Event Listeners & Initialization
+// ==========================================================================
+
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. Initialize WebSocket connection
     initWebSocket();
 
+    // 2. Tab Navigation
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const targetTab = btn.getAttribute('data-tab');
@@ -592,18 +712,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.querySelectorAll('.filter-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            const filter = chip.getAttribute('data-filter');
-            copyToClipboard(filter, 'Wireshark filter');
+    const txtTarget = document.getElementById('mb-txt-target');
+    const numPort = document.getElementById('mb-num-port');
+    if (txtTarget) {
+        txtTarget.addEventListener('input', () => { txtTarget.dataset.userEdited = 'true'; });
+    }
+    if (numPort) {
+        numPort.addEventListener('input', () => { numPort.dataset.userEdited = 'true'; });
+    }
+
+    const copyIpBtn = document.getElementById('btn-copy-ip');
+    if (copyIpBtn) {
+        copyIpBtn.addEventListener('click', () => {
+            const ip = document.getElementById('hdr-lan-ip').textContent;
+            copyToClipboard(ip, 'LAN IP');
         });
-    });
+    }
 
-    document.getElementById('btn-copy-ip').addEventListener('click', () => {
-        const ip = document.getElementById('hdr-lan-ip').textContent;
-        copyToClipboard(ip, 'LAN IP');
-    });
-
+    // 4. HTTP Controls
     document.getElementById('http-btn-toggle').addEventListener('click', toggleHttpPolling);
 
     document.getElementById('http-rng-interval').addEventListener('input', (e) => {
@@ -633,18 +759,43 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('http-btn-burst-100').addEventListener('click', () => sendManualBurst(100));
     document.getElementById('http-btn-burst-parallel').addEventListener('click', sendParallelBurst);
 
-    document.getElementById('mb-btn-toggle-poller').addEventListener('click', toggleMasterPoller);
-    document.getElementById('mb-btn-apply-target').addEventListener('click', applyMasterConfig);
-    document.getElementById('mb-btn-send-manual').addEventListener('click', sendManualModbusQuery);
+    // 5. Modbus Master Poller Controls
+    const btnTogglePoller = document.getElementById('mb-btn-toggle-poller');
+    if (btnTogglePoller) {
+        btnTogglePoller.addEventListener('click', toggleMasterPoller);
+    }
 
-    document.getElementById('mb-rng-interval').addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value);
-        document.getElementById('mb-lbl-interval').textContent = `${val.toFixed(1)} s`;
-    });
-    document.getElementById('mb-rng-interval').addEventListener('change', applyMasterConfig);
-    document.getElementById('mb-sel-fc').addEventListener('change', applyMasterConfig);
-    document.getElementById('mb-sel-conn-mode').addEventListener('change', applyMasterConfig);
+    const btnApplyTarget = document.getElementById('mb-btn-apply-target');
+    if (btnApplyTarget) {
+        btnApplyTarget.addEventListener('click', applyMasterConfig);
+    }
 
+    const btnManualQuery = document.getElementById('mb-btn-manual-query');
+    if (btnManualQuery) {
+        btnManualQuery.addEventListener('click', sendManualModbusQuery);
+    }
+
+    const rngModbusInterval = document.getElementById('mb-rng-interval');
+    if (rngModbusInterval) {
+        rngModbusInterval.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            const lbl = document.getElementById('mb-lbl-interval');
+            if (lbl) lbl.textContent = `${val.toFixed(1)} s`;
+        });
+        rngModbusInterval.addEventListener('change', applyMasterConfig);
+    }
+
+    const selModbusFc = document.getElementById('mb-sel-fc');
+    if (selModbusFc) {
+        selModbusFc.addEventListener('change', applyMasterConfig);
+    }
+
+    const selModbusConn = document.getElementById('mb-sel-conn-mode');
+    if (selModbusConn) {
+        selModbusConn.addEventListener('change', applyMasterConfig);
+    }
+
+    // 6. Analyzer Controls
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -674,6 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 7. Modal Close
     document.getElementById('btn-close-modal').addEventListener('click', () => {
         document.getElementById('packet-modal').classList.add('hidden');
     });
