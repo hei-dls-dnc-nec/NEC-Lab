@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEC Protocol Workbench - HTTP & Modbus TCP Lab</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Global App Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="brand">
+                <span class="brand-title">NEC Protocol Workbench</span>
+                <span class="brand-version">v1.0</span>
+            </div>
+            <div class="service-pills">
+                <div class="pill pill-active" title="HTTP Server Port">
+                    <span class="pill-dot"></span>
+                    <span>HTTP :<strong id="hdr-http-port">8050</strong></span>
+                </div>
+                <div class="pill pill-active" title="Modbus TCP Server Port">
+                    <span class="pill-dot"></span>
+                    <span>MODBUS :<strong id="hdr-modbus-port">1502</strong></span>
+                </div>
+                <div class="pill pill-lan" id="btn-copy-ip" title="Click to copy Primary LAN IP">
+                    <span class="pill-icon">🌐</span>
+                    <span>IP: <strong id="hdr-lan-ip">127.0.0.1</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <div class="ws-status" id="ws-indicator" title="WebSocket telemetry feed">
+                <span class="ws-dot"></span>
+                <span id="ws-status-text">Connected</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Navigation Tabs -->
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-http">
+            <span class="tab-icon">🌐</span>
+            <span>HTTP Traffic Generator</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-modbus">
+            <span class="tab-icon">⚡</span>
+            <span>Modbus TCP / SCADA</span>
+        </button>
+    </nav>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+
+        <!-- ============================================================ -->
+        <!-- TAB 1: HTTP TRAFFIC GENERATOR                                -->
+        <!-- ============================================================ -->
+        <section id="tab-http" class="tab-pane active">
+            <!-- HTTP KPI Metrics Strip -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Requests Sent (TX)</div>
+                    <div class="kpi-value" id="http-stat-tx-count">0</div>
+                    <div class="kpi-sub" id="http-stat-tx-bytes">0 B uploaded</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Responses Received (RX)</div>
+                    <div class="kpi-value" id="http-stat-rx-count">0</div>
+                    <div class="kpi-sub" id="http-stat-rx-bytes">0 B downloaded</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Current Round-Trip</div>
+                    <div class="kpi-value" id="http-stat-rtt">0 ms</div>
+                    <div class="kpi-sub">Last HTTP request latency</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Connection State</div>
+                    <div class="kpi-value" id="http-stat-conn-state" style="color: var(--text-muted)">Idle</div>
+                    <div class="kpi-sub" id="http-stat-conn-sub">Poller inactive</div>
+                </div>
+            </div>
+
+            <!-- HTTP Control Columns -->
+            <div class="two-col-grid">
+                <!-- Poller Controls -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Traffic Poller Controls</h2>
+                        <span id="http-badge-status" class="badge badge-inactive">Inactive</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="control-group">
+                            <button id="http-btn-toggle" class="btn btn-primary btn-block">Start HTTP Polling</button>
+                        </div>
+
+                        <div class="control-group">
+                            <div class="control-label-row">
+                                <label for="http-rng-interval">Polling Rate (Interval):</label>
+                                <span class="val-mono" id="http-lbl-interval">1.0 s</span>
+                            </div>
+                            <input type="range" id="http-rng-interval" min="0.1" max="5.0" step="0.1" value="1.0">
+                        </div>
+
+                        <div class="control-group">
+                            <label for="http-sel-method">Request Method & Direction:</label>
+                            <select id="http-sel-method" class="select-field">
+                                <option value="GET">GET /api/lab/traffic (Download Server Data)</option>
+                                <option value="POST">POST /api/lab/traffic (Upload Client Payload)</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="http-sel-server-size">Server Response Payload (Downstream):</label>
+                            <select id="http-sel-server-size" class="select-field">
+                                <option value="small">Small (~150 B) — Single standard TCP packet</option>
+                                <option value="medium">Medium (~1.2 KB) — Nearing TCP MSS ceiling</option>
+                                <option value="large">Large (~10 KB) — Multi-packet TCP segmentation</option>
+                                <option value="jumbo">Jumbo (~64 KB) — TCP windowing & IP fragmentation</option>
+                            </select>
+                            <span class="field-hint">Generates <code>?size=...</code> payload padding from server.</span>
+                        </div>
+
+                        <div class="control-group" id="http-post-size-group" style="display: none;">
+                            <label for="http-sel-client-size">Client POST Body (Upstream):</label>
+                            <select id="http-sel-client-size" class="select-field">
+                                <option value="small">Small (~60 B) — Minimal JSON object</option>
+                                <option value="medium">Medium (~1.0 KB) — Standard form/telemetry payload</option>
+                                <option value="large">Large (~10 KB) — Segmented POST payload</option>
+                                <option value="jumbo">Jumbo (~64 KB) — Heavy upload fragmentation</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="http-sel-keep-alive">TCP Connection Lifecycle:</label>
+                            <select id="http-sel-keep-alive" class="select-field">
+                                <option value="true">Connection: keep-alive (Persistent TCP Socket)</option>
+                                <option value="false">Connection: close (Teardown & Reconnect per query)</option>
+                            </select>
+                            <span class="field-hint">Observe 3-way handshakes (`SYN`, `SYN-ACK`) when set to `close`.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Bursts & Load Generator -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Manual Traffic Bursts</h2>
+                    </div>
+                    <div class="panel-body">
+                        <p class="panel-desc">
+                            Execute one-off payload bursts or parallel requests to test throughput, connection concurrency, and payload transfer.
+                        </p>
+
+                        <div class="burst-btn-grid">
+                            <button id="http-btn-burst-10" class="btn btn-secondary">
+                                <strong>POST 10 KB Burst</strong>
+                                <span>Multi-segment stream</span>
+                            </button>
+                            <button id="http-btn-burst-100" class="btn btn-secondary">
+                                <strong>POST 100 KB Burst</strong>
+                                <span>Heavy payload transfer</span>
+                            </button>
+                            <button id="http-btn-burst-parallel" class="btn btn-secondary">
+                                <strong>5x Concurrent Requests</strong>
+                                <span>Parallel TCP sockets</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- TAB 2: MODBUS TCP / SCADA LAB                                -->
+        <!-- ============================================================ -->
+        <section id="tab-modbus" class="tab-pane">
+            <!-- Modbus KPI Metrics Strip -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Modbus Transactions</div>
+                    <div class="kpi-value" id="mb-stat-transactions">0</div>
+                    <div class="kpi-sub">Total wire requests processed</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Active TCP Sockets</div>
+                    <div class="kpi-value" id="mb-stat-active-conn">0</div>
+                    <div class="kpi-sub" id="mb-stat-connected-clients">0 connected clients</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Wire Data Transferred</div>
+                    <div class="kpi-value" id="mb-stat-bytes">0 B</div>
+                    <div class="kpi-sub">Total MBAP + PDU bytes</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Handshakes Executed</div>
+                    <div class="kpi-value" id="mb-stat-opened">0</div>
+                    <div class="kpi-sub">Total TCP connections opened</div>
+                </div>
+            </div>
+
+            <!-- Modbus Work Area Grid -->
+            <div class="two-col-grid">
+                <!-- Left Column: Slave PLC Datastore -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Modbus Slave Datastore (PLC Device)</h2>
+                        <span class="badge badge-active">Port 1502 Active</span>
+                    </div>
+                    <div class="panel-body">
+                        <!-- Coils Table -->
+                        <div class="table-section">
+                            <div class="section-title">
+                                <h3>Coils (0x — 1-bit Discrete Inputs/Outputs)</h3>
+                                <span class="sub-text">Click state to toggle (FC05 Write Single Coil)</span>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 70px;">Addr</th>
+                                            <th>Signal / Name</th>
+                                            <th style="width: 90px; text-align: center;">State</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbl-coils">
+                                        <!-- Dynamically generated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Holding Registers Table -->
+                        <div class="table-section" style="margin-top: 1.25rem;">
+                            <div class="section-title">
+                                <h3>Holding Registers (4x — 16-bit Unsigned Telemetry)</h3>
+                                <span class="sub-text">Process drift active on 40001–40003</span>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 70px;">Addr</th>
+                                            <th>Metric / Description</th>
+                                            <th style="width: 80px; text-align: right;">Value</th>
+                                            <th style="width: 130px; text-align: right;">Write (FC06)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbl-registers">
+                                        <!-- Dynamically generated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Master Poller & LAN Configuration -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>SCADA Master (Client Poller)</h2>
+                        <span id="mb-badge-poller" class="badge badge-active">Poller Active</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="control-group">
+                            <button id="mb-btn-toggle-poller" class="btn btn-primary btn-block">Pause Master Poller</button>
+                        </div>
+
+                        <!-- Target Selection -->
+                        <div class="control-group">
+                            <label for="mb-txt-target">Target Slave Host & Port:</label>
+                            <div class="input-inline-group">
+                                <input type="text" id="mb-txt-target" class="input-field" value="127.0.0.1" placeholder="127.0.0.1 or Classmate LAN IP">
+                                <input type="number" id="mb-num-port" class="input-field" value="1502" style="max-width: 90px;">
+                                <button id="mb-btn-apply-target" class="btn btn-secondary">Apply</button>
+                            </div>
+                            <span class="field-hint">Change target to a classmate's IP to query their machine across the lab network!</span>
+                        </div>
+
+                        <div class="control-group">
+                            <div class="control-label-row">
+                                <label for="mb-rng-interval">Polling Rate:</label>
+                                <span class="val-mono" id="mb-lbl-interval">1.0 s</span>
+                            </div>
+                            <input type="range" id="mb-rng-interval" min="0.1" max="5.0" step="0.1" value="1.0">
+                        </div>
+
+                        <div class="control-group">
+                            <label for="mb-sel-fc">Query Function Code:</label>
+                            <select id="mb-sel-fc" class="select-field">
+                                <option value="3">FC 03 — Read Holding Registers (40001..40010)</option>
+                                <option value="1">FC 01 — Read Coils (00001..00010)</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="mb-sel-conn-mode">TCP Connection Management:</label>
+                            <select id="mb-sel-conn-mode" class="select-field">
+                                <option value="keep-alive">Persistent TCP Socket (Industrial Standard)</option>
+                                <option value="transient">Transient Socket (Reconnect per Query — High SYN rate)</option>
+                            </select>
+                        </div>
+
+                        <!-- Manual One-Off Query Box -->
+                        <div class="info-card" style="margin-top: 1rem;">
+                            <h3>One-Off Manual Modbus Query</h3>
+                            <div class="input-inline-group" style="margin-top: 0.5rem;">
+                                <select id="mb-sel-manual-fc" class="select-field" style="max-width: 140px;">
+                                    <option value="3">FC03 Regs</option>
+                                    <option value="1">FC01 Coils</option>
+                                </select>
+                                <input type="number" id="mb-num-manual-addr" class="input-field" value="0" min="0" max="9" placeholder="Addr">
+                                <input type="number" id="mb-num-manual-qty" class="input-field" value="5" min="1" max="10" placeholder="Qty">
+                                <button id="mb-btn-send-manual" class="btn btn-secondary">Query</button>
+                            </div>
+                        </div>
+
+                        <!-- Connected Clients Info -->
+                        <div class="info-card" style="margin-top: 1rem;">
+                            <h3>Connected LAN Clients (Slave Connections)</h3>
+                            <div id="mb-connected-clients-list" class="client-tags-box">
+                                <span class="tag-empty">No external LAN clients currently connected</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================ -->
+        <!-- BOTTOM PANEL: UNIFIED LIVE FRAME & PROTOCOL ANALYZER         -->
+        <!-- ============================================================ -->
+        <section class="panel panel-analyzer">
+            <div class="analyzer-header">
+                <div class="analyzer-title-group">
+                    <h2>Live Protocol & Frame Analyzer</h2>
+                    <div class="segmented-filters">
+                        <button class="filter-btn active" data-log-filter="ALL">All (<span id="cnt-all">0</span>)</button>
+                        <button class="filter-btn" data-log-filter="HTTP">HTTP (<span id="cnt-http">0</span>)</button>
+                        <button class="filter-btn" data-log-filter="MODBUS">Modbus (<span id="cnt-modbus">0</span>)</button>
+                    </div>
+                </div>
+
+                <div class="analyzer-actions">
+                    <input type="text" id="log-search-input" class="search-field" placeholder="Filter packets...">
+                    <label class="checkbox-inline">
+                        <input type="checkbox" id="chk-autoscroll" checked>
+                        <span>Auto-scroll</span>
+                    </label>
+                    <button id="btn-clear-logs" class="btn btn-sm btn-secondary">Clear</button>
+                </div>
+            </div>
+
+            <div class="table-container analyzer-table-box">
+                <table class="analyzer-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 105px;">Time</th>
+                            <th style="width: 75px;">Proto</th>
+                            <th style="width: 55px;">Dir</th>
+                            <th style="width: 140px;">Peer</th>
+                            <th>Transaction Description</th>
+                            <th>Raw Frame / Wire Hex</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbl-log-stream">
+                        <!-- Streaming rows inserted dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal for Detailed Packet Inspection -->
+    <div id="packet-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Packet Frame Inspection</h3>
+                <button id="btn-close-modal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-grid">
+                    <div class="detail-item"><strong>Timestamp:</strong> <span id="modal-time"></span></div>
+                    <div class="detail-item"><strong>Protocol:</strong> <span id="modal-proto"></span></div>
+                    <div class="detail-item"><strong>Direction:</strong> <span id="modal-dir"></span></div>
+                    <div class="detail-item"><strong>Peer Address:</strong> <span id="modal-peer"></span></div>
+                </div>
+                <div class="detail-section">
+                    <h4>Description</h4>
+                    <div id="modal-desc" class="code-box"></div>
+                </div>
+                <div class="detail-section">
+                    <h4>Raw Wire Hex Bytes</h4>
+                    <div id="modal-hex" class="hex-dump-box"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
