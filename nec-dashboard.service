@@ -1,0 +1,20 @@
+[Unit]
+Description=NEC Protocol Workbench Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__WORKDIR__
+ExecStart=__WORKDIR__/.venv/bin/python dashboard/main.py $EXTRA_ARGS
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-__WORKDIR__/.env
+SyslogIdentifier=nec-dashboard
+
+[Install]
+WantedBy=multi-user.target
