@@ -9,6 +9,8 @@ from fastapi import WebSocket
 from dashboard.config import (
     DEFAULT_MODBUS_PORT,
     DEFAULT_HTTP_PORT,
+    DEFAULT_HTTP_POLLER_ACTIVE,
+    DEFAULT_MODBUS_POLLER_ACTIVE,
     COIL_DEFINITIONS,
     REGISTER_DEFINITIONS,
     get_local_ips,
@@ -43,9 +45,12 @@ class AppState:
             "modbus_connected_clients": [],
         }
 
+        self.default_http_poller_active = DEFAULT_HTTP_POLLER_ACTIVE
+        self.default_modbus_poller_active = DEFAULT_MODBUS_POLLER_ACTIVE
+
         # Modbus Master Poller Configuration
         self.master_config: Dict[str, Any] = {
-            "polling_active": True,
+            "polling_active": DEFAULT_MODBUS_POLLER_ACTIVE,
             "interval": 1.0,
             "function_code": 3,  # 3 = FC03 Read Holding Registers, 1 = FC01 Read Coils
             "connection_mode": "keep-alive",  # "keep-alive" or "transient"
@@ -156,6 +161,8 @@ class AppState:
                     "all_ips": ALL_LAN_IPS,
                     "http_port": DEFAULT_HTTP_PORT,
                     "modbus_port": DEFAULT_MODBUS_PORT,
+                    "default_http_poller_active": self.default_http_poller_active,
+                    "default_modbus_poller_active": self.default_modbus_poller_active,
                 },
             }
 

@@ -7,6 +7,10 @@ from typing import Tuple, List
 DEFAULT_HTTP_PORT = 8050
 DEFAULT_MODBUS_PORT = 1502
 
+# Default poller states (both disabled by default)
+DEFAULT_HTTP_POLLER_ACTIVE = False
+DEFAULT_MODBUS_POLLER_ACTIVE = False
+
 # Friendly metadata for industrial simulation
 COIL_DEFINITIONS = [
     {"addr": 0, "name": "Main Coolant Pump", "desc": "Circulation pump power state"},

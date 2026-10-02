@@ -18,6 +18,8 @@ from pydantic import BaseModel
 from dashboard.config import (
     DEFAULT_HTTP_PORT,
     DEFAULT_MODBUS_PORT,
+    DEFAULT_HTTP_POLLER_ACTIVE,
+    DEFAULT_MODBUS_POLLER_ACTIVE,
     COIL_DEFINITIONS,
     REGISTER_DEFINITIONS,
 )
@@ -325,7 +327,13 @@ if STATIC_DIR.exists():
         return FileResponse(STATIC_DIR / "index.html")
 
 
-def main():
+def main(
+    default_http_poller: Optional[bool] = None,
+    default_modbus_poller: Optional[bool] = None,
+):
+    http_poller_default = DEFAULT_HTTP_POLLER_ACTIVE if default_http_poller is None else default_http_poller
+    modbus_poller_default = DEFAULT_MODBUS_POLLER_ACTIVE if default_modbus_poller is None else default_modbus_poller
+
     parser = argparse.ArgumentParser(
         description="NEC Protocol Workbench - Unified HTTP & Modbus TCP SCADA Lab"
     )
@@ -335,13 +343,24 @@ def main():
     parser.add_argument("--target", type=str, default="127.0.0.1", help="Target Modbus Slave IP for the Master (default: 127.0.0.1)")
     parser.add_argument("--slave-only", action="store_true", help="Run Modbus Slave & Web Dashboard only (disable poller)")
     parser.add_argument("--master-only", action="store_true", help="Run Modbus Master poller only (disable slave)")
+    parser.add_argument("--poller", action="store_true", help="Start with master polling active")
     parser.add_argument("--no-poller", action="store_true", help="Start with master polling paused")
     args = parser.parse_args()
 
     # Pass args to app state
     app.state.modbus_port = args.modbus_port
     app.state.slave_enabled = not args.master_only
-    app.state.poller_enabled = not (args.slave_only or args.no_poller)
+
+    if args.slave_only or args.no_poller:
+        poller_active = False
+    elif args.poller:
+        poller_active = True
+    else:
+        poller_active = modbus_poller_default
+
+    app.state.poller_enabled = poller_active
+    state.default_http_poller_active = http_poller_default
+    state.default_modbus_poller_active = poller_active
     app.state.target_host = args.target
 
     # Clean technical startup banner
