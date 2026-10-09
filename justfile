@@ -10,43 +10,25 @@ target_unit := "/etc/systemd/system/" + service_file
 default:
     @just --list
 
-# Create virtual environment with uv if it does not exist
-venv:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -f ".venv/bin/python" ]; then
-        echo "Creating virtual environment with uv..."
-        if command -v uv >/dev/null 2>&1; then
-            uv sync
-        elif [ -x "$HOME/.local/bin/uv" ]; then
-            "$HOME/.local/bin/uv" sync
-        elif [ -x "$HOME/.cargo/bin/uv" ]; then
-            "$HOME/.cargo/bin/uv" sync
-        else
-            echo "Error: uv is not installed or not in PATH." >&2
-            echo "Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-            exit 1
-        fi
-        echo "Virtual environment created successfully."
-    else
-        echo "Virtual environment (.venv) already exists."
-    fi
+# Path to the uv binary; falls back to the location the official installer uses
+uv_path := `command -v uv 2>/dev/null || { [ -x "$HOME/.local/bin/uv" ] && echo "$HOME/.local/bin/uv"; } || { [ -x "$HOME/.cargo/bin/uv" ] && echo "$HOME/.cargo/bin/uv"; } || echo "$HOME/.local/bin/uv"`
+
+# Ensure uv is installed (quiet no-op when already present)
+[private]
+_ensure-uv:
+    @test -x "{{uv_path}}" || curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install uv using the official installer (no-op if already installed)
+install-uv: _ensure-uv
+    @"{{uv_path}}" --version
+
+# Create virtual environment with uv if it does not exist (installs uv if missing)
+venv: _ensure-uv
+    @test -f .venv/bin/python && echo "Virtual environment (.venv) already exists." || "{{uv_path}}" sync
 
 # Re-synchronize the virtual environment with uv
-sync:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if command -v uv >/dev/null 2>&1; then
-        uv sync
-    elif [ -x "$HOME/.local/bin/uv" ]; then
-        "$HOME/.local/bin/uv" sync
-    elif [ -x "$HOME/.cargo/bin/uv" ]; then
-        "$HOME/.cargo/bin/uv" sync
-    else
-        echo "Error: uv is not installed or not in PATH." >&2
-        echo "Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-        exit 1
-    fi
+sync: _ensure-uv
+    @"{{uv_path}}" sync
 
 # Run the dashboard interactively
 run *args="": venv
