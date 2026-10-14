@@ -40,9 +40,9 @@ def pack_coils(bool_list: List[bool]) -> bytes:
     return bytes(packed)
 
 
-class ModbusTCPSlaveHandler(socketserver.BaseRequestHandler):
+class ModbusTCPServerHandler(socketserver.BaseRequestHandler):
     """
-    Standard-compliant Modbus TCP Slave Server (PLC Simulator).
+    Standard-compliant Modbus TCP Server (PLC Simulator).
     Handles FC01, FC02, FC03, FC04, FC05, FC06, FC15, FC16.
     """
 
@@ -159,14 +159,14 @@ class ModbusTCPSlaveHandler(socketserver.BaseRequestHandler):
                 state.add_log_entry(
                     proto="MODBUS",
                     direction="RX",
-                    summary=f"Slave RX: {pdu_desc}",
+                    summary=f"Modbus Server RX: {pdu_desc}",
                     peer=client_address,
                     details={
                         "trans_id": trans_id,
                         "proto_id": proto_id,
                         "unit_id": unit_id,
                         "fc": func_code,
-                        "role": "slave_rx",
+                        "role": "server_rx",
                     },
                     raw_hex=to_hex_spaced(mbap + pdu),
                 )
@@ -180,13 +180,13 @@ class ModbusTCPSlaveHandler(socketserver.BaseRequestHandler):
                 state.add_log_entry(
                     proto="MODBUS",
                     direction="TX",
-                    summary=f"Slave TX: Reply {pdu_desc}",
+                    summary=f"Modbus Server TX: Reply {pdu_desc}",
                     peer=client_address,
                     details={
                         "trans_id": trans_id,
                         "unit_id": unit_id,
                         "len": resp_len,
-                        "role": "slave_tx",
+                        "role": "server_tx",
                     },
                     raw_hex=to_hex_spaced(response),
                 )
@@ -214,9 +214,9 @@ class ModbusEngine:
     def start(self):
         self.running = True
 
-        # 1. Start Modbus Slave Server
+        # 1. Start Modbus Server
         try:
-            self.server = ModbusTCPServer(("0.0.0.0", self.port), ModbusTCPSlaveHandler)
+            self.server = ModbusTCPServer(("0.0.0.0", self.port), ModbusTCPServerHandler)
             self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self.server_thread.start()
             print(f"[+] Modbus TCP Server listening on 0.0.0.0:{self.port}")
@@ -224,8 +224,8 @@ class ModbusEngine:
             print(f"[!] Failed to bind Modbus TCP server on port {self.port}: {e}", file=sys.stderr)
             raise
 
-        # 2. Start Master Poller background thread
-        self.poller_thread = threading.Thread(target=self._master_poller_loop, daemon=True)
+        # 2. Start Modbus Client Poller background thread
+        self.poller_thread = threading.Thread(target=self._client_poller_loop, daemon=True)
         self.poller_thread.start()
 
         # 3. Start Telemetry simulation drift
@@ -241,7 +241,7 @@ class ModbusEngine:
         """Simulates subtle real-world sensor fluctuations in registers 0-2 if pointing locally."""
         while self.running:
             time.sleep(1.5)
-            target = state.master_config.get("target_host", "127.0.0.1")
+            target = state.client_config.get("target_host", "127.0.0.1")
             if target in ("127.0.0.1", "localhost", PRIMARY_LAN_IP):
                 with state._lock:
                     state.holding_registers[0] = (state.holding_registers[0] + 1) % 65535  # Tick counter
@@ -249,14 +249,14 @@ class ModbusEngine:
                     state.holding_registers[2] = max(980, min(1050, int(1013 + random.uniform(-6, 6))))  # Pressure
                 state.broadcast_state_update()
 
-    def _master_poller_loop(self):
-        """Background Modbus Master client polling engine."""
+    def _client_poller_loop(self):
+        """Background Modbus Client polling engine."""
         trans_id = 0
         client_socket: Optional[socket.socket] = None
         current_target: Optional[Tuple[str, int]] = None
 
         while self.running:
-            config = state.master_config
+            config = state.client_config
             if not config.get("polling_active", True):
                 if client_socket:
                     client_socket.close()
@@ -294,20 +294,20 @@ class ModbusEngine:
 
                 if fc == 1:
                     pdu = struct.pack('>BHH', 1, 0, 10)
-                    pdu_desc = "Master Poll: Read Coils 00001..00010"
+                    pdu_desc = "Modbus Client Poll: Read Coils 00001..00010"
                 else:
                     pdu = struct.pack('>BHH', 3, 0, 10)
-                    pdu_desc = "Master Poll: Read Holding Regs 40001..40010"
+                    pdu_desc = "Modbus Client Poll: Read Holding Regs 40001..40010"
 
                 request_frame = mbap + pdu
 
-                # Log Master TX frame
+                # Log Modbus Client TX frame
                 state.add_log_entry(
                     proto="MODBUS",
                     direction="TX",
-                    summary=f"Master Query: {pdu_desc}",
+                    summary=f"Modbus Client Query: {pdu_desc}",
                     peer=peer_desc,
-                    details={"trans_id": trans_id, "fc": fc, "role": "master_tx"},
+                    details={"trans_id": trans_id, "fc": fc, "role": "client_tx"},
                     raw_hex=to_hex_spaced(request_frame),
                 )
 
@@ -349,9 +349,9 @@ class ModbusEngine:
                             state.add_log_entry(
                                 proto="MODBUS",
                                 direction="RX",
-                                summary=f"Master Reply: {pdu_desc}",
+                                summary=f"Modbus Client Reply: {pdu_desc}",
                                 peer=peer_desc,
-                                details={"trans_id": _r_trans, "pdu_len": len(resp_pdu), "role": "master_rx"},
+                                details={"trans_id": _r_trans, "pdu_len": len(resp_pdu), "role": "client_rx"},
                                 raw_hex=to_hex_spaced(resp_mbap + resp_pdu),
                             )
 
@@ -390,7 +390,7 @@ def trigger_manual_write(func_code: int, address: int, value: int, target_host: 
         state.add_log_entry(
             proto="MODBUS",
             direction="TX",
-            summary=f"Master TX: {pdu_desc}",
+            summary=f"Modbus Client TX: {pdu_desc}",
             peer=peer_desc,
             details={"trans_id": trans_id, "fc": func_code, "role": "manual_tx"},
             raw_hex=to_hex_spaced(request),
@@ -412,7 +412,7 @@ def trigger_manual_write(func_code: int, address: int, value: int, target_host: 
                     state.add_log_entry(
                         proto="MODBUS",
                         direction="RX",
-                        summary=f"Master RX: Ack {pdu_desc}",
+                        summary=f"Modbus Client RX: Ack {pdu_desc}",
                         peer=peer_desc,
                         details={"trans_id": _t, "role": "manual_rx"},
                         raw_hex=to_hex_spaced(resp_mbap + resp_pdu),
@@ -441,7 +441,7 @@ def trigger_manual_query(func_code: int, start_addr: int, quantity: int, target_
         state.add_log_entry(
             proto="MODBUS",
             direction="TX",
-            summary=f"Master TX: {pdu_desc}",
+            summary=f"Modbus Client TX: {pdu_desc}",
             peer=peer_desc,
             details={"trans_id": trans_id, "fc": func_code, "role": "manual_tx"},
             raw_hex=to_hex_spaced(request),
@@ -463,7 +463,7 @@ def trigger_manual_query(func_code: int, start_addr: int, quantity: int, target_
                     state.add_log_entry(
                         proto="MODBUS",
                         direction="RX",
-                        summary=f"Master RX: Reply {pdu_desc}",
+                        summary=f"Modbus Client RX: Reply {pdu_desc}",
                         peer=peer_desc,
                         details={"trans_id": _t, "role": "manual_rx"},
                         raw_hex=to_hex_spaced(resp_mbap + resp_pdu),

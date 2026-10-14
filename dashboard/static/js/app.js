@@ -13,7 +13,7 @@ const App = {
         coils: [],
         registers: [],
         stats: {},
-        master_config: {},
+        client_config: {},
         server_info: {}
     },
 
@@ -185,20 +185,20 @@ function renderFullState() {
     renderRegistersTable(s.registers || []);
 
     // Modbus Poller Controls
-    if (s.master_config) {
-        const cfg = s.master_config;
+    if (s.client_config) {
+        const cfg = s.client_config;
         const pollerActive = !!cfg.polling_active;
         const btnToggle = document.getElementById('mb-btn-toggle-poller');
         const badgePoller = document.getElementById('mb-badge-poller');
 
         if (btnToggle && badgePoller) {
             if (pollerActive) {
-                btnToggle.textContent = 'Pause Master Poller';
+                btnToggle.textContent = 'Pause Modbus Client Poller';
                 btnToggle.className = 'btn btn-secondary btn-block';
                 badgePoller.textContent = 'Poller Active';
                 badgePoller.className = 'badge badge-active';
             } else {
-                btnToggle.textContent = 'Resume Master Poller';
+                btnToggle.textContent = 'Resume Modbus Client Poller';
                 btnToggle.className = 'btn btn-primary btn-block';
                 badgePoller.textContent = 'Poller Paused';
                 badgePoller.className = 'badge badge-inactive';
@@ -629,8 +629,8 @@ async function writeRegister(index, valueStr) {
     }
 }
 
-async function toggleMasterPoller() {
-    const currentActive = !!App.state.master_config?.polling_active;
+async function toggleClientPoller() {
+    const currentActive = !!App.state.client_config?.polling_active;
     try {
         await fetch('/api/modbus/config', {
             method: 'POST',
@@ -642,7 +642,7 @@ async function toggleMasterPoller() {
     }
 }
 
-async function applyMasterConfig() {
+async function applyClientConfig() {
     const txtTarget = document.getElementById('mb-txt-target');
     const numPort = document.getElementById('mb-num-port');
     const targetHost = txtTarget ? txtTarget.value.trim() : '127.0.0.1';
@@ -759,15 +759,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('http-btn-burst-100').addEventListener('click', () => sendManualBurst(100));
     document.getElementById('http-btn-burst-parallel').addEventListener('click', sendParallelBurst);
 
-    // 5. Modbus Master Poller Controls
+    // 5. Modbus Client Poller Controls
     const btnTogglePoller = document.getElementById('mb-btn-toggle-poller');
     if (btnTogglePoller) {
-        btnTogglePoller.addEventListener('click', toggleMasterPoller);
+        btnTogglePoller.addEventListener('click', toggleClientPoller);
     }
 
     const btnApplyTarget = document.getElementById('mb-btn-apply-target');
     if (btnApplyTarget) {
-        btnApplyTarget.addEventListener('click', applyMasterConfig);
+        btnApplyTarget.addEventListener('click', applyClientConfig);
     }
 
     const btnManualQuery = document.getElementById('mb-btn-manual-query');
@@ -782,17 +782,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const lbl = document.getElementById('mb-lbl-interval');
             if (lbl) lbl.textContent = `${val.toFixed(1)} s`;
         });
-        rngModbusInterval.addEventListener('change', applyMasterConfig);
+        rngModbusInterval.addEventListener('change', applyClientConfig);
     }
 
     const selModbusFc = document.getElementById('mb-sel-fc');
     if (selModbusFc) {
-        selModbusFc.addEventListener('change', applyMasterConfig);
+        selModbusFc.addEventListener('change', applyClientConfig);
     }
 
     const selModbusConn = document.getElementById('mb-sel-conn-mode');
     if (selModbusConn) {
-        selModbusConn.addEventListener('change', applyMasterConfig);
+        selModbusConn.addEventListener('change', applyClientConfig);
     }
 
     // 6. Analyzer Controls

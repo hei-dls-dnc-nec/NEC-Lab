@@ -48,8 +48,8 @@ class AppState:
         self.default_http_poller_active = DEFAULT_HTTP_POLLER_ACTIVE
         self.default_modbus_poller_active = DEFAULT_MODBUS_POLLER_ACTIVE
 
-        # Modbus Master Poller Configuration
-        self.master_config: Dict[str, Any] = {
+        # Modbus Client Poller Configuration
+        self.client_config: Dict[str, Any] = {
             "polling_active": DEFAULT_MODBUS_POLLER_ACTIVE,
             "interval": 1.0,
             "function_code": 3,  # 3 = FC03 Read Holding Registers, 1 = FC01 Read Coils
@@ -155,7 +155,7 @@ class AppState:
                     for idx in range(len(self.holding_registers))
                 ],
                 "stats": dict(self.stats),
-                "master_config": dict(self.master_config),
+                "client_config": dict(self.client_config),
                 "server_info": {
                     "primary_ip": PRIMARY_LAN_IP,
                     "all_ips": ALL_LAN_IPS,

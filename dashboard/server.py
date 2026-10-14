@@ -75,15 +75,15 @@ async def lifespan(app: FastAPI):
     # Start Modbus Engine if configured
     global modbus_engine_instance
     modbus_port = getattr(app.state, "modbus_port", DEFAULT_MODBUS_PORT)
-    slave_enabled = getattr(app.state, "slave_enabled", True)
+    server_enabled = getattr(app.state, "server_enabled", True)
     poller_enabled = getattr(app.state, "poller_enabled", True)
 
-    state.master_config["polling_active"] = poller_enabled
+    state.client_config["polling_active"] = poller_enabled
     target_host = getattr(app.state, "target_host", "127.0.0.1")
-    state.master_config["target_host"] = target_host
-    state.master_config["target_port"] = modbus_port
+    state.client_config["target_host"] = target_host
+    state.client_config["target_port"] = modbus_port
 
-    if slave_enabled:
+    if server_enabled:
         modbus_engine_instance = ModbusEngine(port=modbus_port)
         modbus_engine_instance.start()
 
@@ -114,7 +114,7 @@ async def get_status():
     return state.get_full_status()
 
 
-class MasterConfigUpdate(BaseModel):
+class ClientConfigUpdate(BaseModel):
     polling_active: Optional[bool] = None
     interval: Optional[float] = None
     function_code: Optional[int] = None
@@ -124,24 +124,24 @@ class MasterConfigUpdate(BaseModel):
 
 
 @app.post("/api/modbus/config")
-async def update_master_config(cfg: MasterConfigUpdate):
-    """Updates master poller configuration dynamically."""
+async def update_client_config(cfg: ClientConfigUpdate):
+    """Updates Modbus Client poller configuration dynamically."""
     with state._lock:
         if cfg.polling_active is not None:
-            state.master_config["polling_active"] = bool(cfg.polling_active)
+            state.client_config["polling_active"] = bool(cfg.polling_active)
         if cfg.interval is not None:
-            state.master_config["interval"] = max(0.1, min(10.0, float(cfg.interval)))
+            state.client_config["interval"] = max(0.1, min(10.0, float(cfg.interval)))
         if cfg.function_code is not None:
-            state.master_config["function_code"] = int(cfg.function_code)
+            state.client_config["function_code"] = int(cfg.function_code)
         if cfg.connection_mode is not None:
-            state.master_config["connection_mode"] = str(cfg.connection_mode)
+            state.client_config["connection_mode"] = str(cfg.connection_mode)
         if cfg.target_host is not None and cfg.target_host.strip():
-            state.master_config["target_host"] = cfg.target_host.strip()
+            state.client_config["target_host"] = cfg.target_host.strip()
         if cfg.target_port is not None and cfg.target_port > 0:
-            state.master_config["target_port"] = int(cfg.target_port)
+            state.client_config["target_port"] = int(cfg.target_port)
 
     state.broadcast_state_update()
-    return {"status": "updated", "config": state.master_config}
+    return {"status": "updated", "config": state.client_config}
 
 
 class WriteCoilRequest(BaseModel):
@@ -208,8 +208,8 @@ async def write_coil(req: WriteCoilRequest, request: Request):
         state.coils[req.index] = target_val
 
     # Dispatch binary Modbus TCP FC05 frame over port 1502
-    target_host = state.master_config.get("target_host", "127.0.0.1")
-    target_port = state.master_config.get("target_port", DEFAULT_MODBUS_PORT)
+    target_host = state.client_config.get("target_host", "127.0.0.1")
+    target_port = state.client_config.get("target_port", DEFAULT_MODBUS_PORT)
     val_int = 0xFF00 if target_val else 0x0000
 
     threading.Thread(
@@ -239,8 +239,8 @@ async def write_register(req: WriteRegisterRequest, request: Request):
         state.holding_registers[req.index] = req.value
 
     # Dispatch binary Modbus TCP FC06 frame over port 1502
-    target_host = state.master_config.get("target_host", "127.0.0.1")
-    target_port = state.master_config.get("target_port", DEFAULT_MODBUS_PORT)
+    target_host = state.client_config.get("target_host", "127.0.0.1")
+    target_port = state.client_config.get("target_port", DEFAULT_MODBUS_PORT)
 
     threading.Thread(
         target=trigger_manual_write,
@@ -261,8 +261,8 @@ class ManualQueryRequest(BaseModel):
 @app.post("/api/modbus/manual_query")
 async def manual_query(req: ManualQueryRequest):
     """Executes a one-off Modbus query (FC01 or FC03)."""
-    target_host = state.master_config.get("target_host", "127.0.0.1")
-    target_port = state.master_config.get("target_port", DEFAULT_MODBUS_PORT)
+    target_host = state.client_config.get("target_host", "127.0.0.1")
+    target_port = state.client_config.get("target_port", DEFAULT_MODBUS_PORT)
 
     threading.Thread(
         target=trigger_manual_query,
@@ -340,18 +340,18 @@ def main(
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Binding host IP (default: 0.0.0.0)")
     parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT, help="HTTP Dashboard port (default: 8050)")
     parser.add_argument("--modbus-port", type=int, default=DEFAULT_MODBUS_PORT, help="Modbus TCP port (default: 1502)")
-    parser.add_argument("--target", type=str, default="127.0.0.1", help="Target Modbus Slave IP for the Master (default: 127.0.0.1)")
-    parser.add_argument("--slave-only", action="store_true", help="Run Modbus Slave & Web Dashboard only (disable poller)")
-    parser.add_argument("--master-only", action="store_true", help="Run Modbus Master poller only (disable slave)")
-    parser.add_argument("--poller", action="store_true", help="Start with master polling active")
-    parser.add_argument("--no-poller", action="store_true", help="Start with master polling paused")
+    parser.add_argument("--target", type=str, default="127.0.0.1", help="Target Modbus Server IP for the Modbus Client (default: 127.0.0.1)")
+    parser.add_argument("--server-only", action="store_true", help="Run Modbus Server & Web Dashboard only (disable poller)")
+    parser.add_argument("--client-only", action="store_true", help="Run Modbus Client poller only (disable Modbus Server)")
+    parser.add_argument("--poller", action="store_true", help="Start with Modbus Client polling active")
+    parser.add_argument("--no-poller", action="store_true", help="Start with Modbus Client polling paused")
     args = parser.parse_args()
 
     # Pass args to app state
     app.state.modbus_port = args.modbus_port
-    app.state.slave_enabled = not args.master_only
+    app.state.server_enabled = not args.client_only
 
-    if args.slave_only or args.no_poller:
+    if args.server_only or args.no_poller:
         poller_active = False
     elif args.poller:
         poller_active = True
@@ -368,12 +368,12 @@ def main(
     print("  NEC PROTOCOL WORKBENCH (HTTP & MODBUS TCP SCADA LAB)")
     print("=" * 70)
     print("  Endpoints:")
-    print(f"    • Web Dashboard:    http://localhost:{args.http_port} (or http://{PRIMARY_LAN_IP}:{args.http_port})")
-    if not args.master_only:
-        print(f"    • Modbus TCP Slave: 0.0.0.0:{args.modbus_port} (Local: 127.0.0.1:{args.modbus_port})")
-    print(f"    • Master Poller:    Target -> {args.target}:{args.modbus_port}")
+    print(f"    • Web Dashboard:        http://localhost:{args.http_port} (or http://{PRIMARY_LAN_IP}:{args.http_port})")
+    if not args.client_only:
+        print(f"    • Modbus TCP Server:    0.0.0.0:{args.modbus_port} (Local: 127.0.0.1:{args.modbus_port})")
+    print(f"    • Modbus Client Poller: Target -> {args.target}:{args.modbus_port}")
     if len(ALL_LAN_IPS) > 1:
-        print(f"    • Detected LAN IPs: {', '.join(ALL_LAN_IPS)}")
+        print(f"    • Detected LAN IPs:     {', '.join(ALL_LAN_IPS)}")
     print("=" * 70 + "\n")
 
     uvicorn.run(app, host=args.host, port=args.http_port, log_level="warning")
